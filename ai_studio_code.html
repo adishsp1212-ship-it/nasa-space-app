@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AstroVitals — Orbital Crew Health Telemetry</title>
+  <style>
+    :root {
+      --bg-void: #050811;
+      --bg-surface: #0b1120;
+      --bg-card: #11192c;
+      --bg-card-hover: #16213a;
+      --border-subtle: rgba(148, 163, 184, 0.14);
+      --border-glow: rgba(56, 189, 248, 0.35);
+
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+
+      --accent-cyan: #38bdf8;
+      --accent-indigo: #818cf8;
+
+      --green: #10b981;
+      --green-bg: rgba(16, 185, 129, 0.12);
+      --green-border: rgba(16, 185, 129, 0.35);
+
+      --yellow: #f59e0b;
+      --yellow-bg: rgba(245, 158, 11, 0.13);
+      --yellow-border: rgba(245, 158, 11, 0.4);
+
+      --red: #ef4444;
+      --red-bg: rgba(239, 68, 68, 0.14);
+      --red-border: rgba(239, 68, 68, 0.45);
+
+      --crew-1: #38bdf8;
+      --crew-2: #a78bfa;
+      --crew-3: #34d399;
+      --crew-4: #fb7185;
+
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-void);
+      background-image:
+        radial-gradient(ellipse at 15% 0%, rgba(56, 189, 248, 0.08) 0%, transparent 45%),
+        radial-gradient(ellipse at 85% 10%, rgba(129, 140, 248, 0.07) 0%, transparent 40%),
+        radial-gradient(circle at 50% 100%, rgba(16, 185, 129, 0.04) 0%, transparent 50%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Subtle starfield grid overlay */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app-shell {
+      position: relative;
+      z-index: 1;
+      max-width: 1480px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 18px 22px 28px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* Header */
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: rgba(11, 17, 32, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 14px 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .brand h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .live-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid var(--green-border);
+    }
+
+    .live-pill.paused {
+      background: var(--yellow-bg);
+      color: var(--yellow);
+      border-color: var(--yellow-border);
+    }
+
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.6s infinite;
+    }
+
+    .live-pill.paused .live-dot {
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .brand-sub {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+
+    /* Controls bar */
+    .controls-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .phase-selector-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 4px;
+      border-radius: 10px;
+    }
+
+    .phase-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      padding: 0 6px 0 8px;
+      font-weight: 600;
+    }
+
+    .phase-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .phase-btn:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .phase-btn.active {
+      background: rgba(56, 189, 248, 0.16);
+      color: var(--accent-cyan);
+      border-color: rgba(56, 189, 248, 0.4);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.12);
+    }
+
+    .sim-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-control {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-control:hover {
+      border-color: var(--border-glow);
+      background: var(--bg-card-hover);
+    }
+
+    .btn-control.warn {
+      border-color: rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
+    }
+
+    .btn-control.warn:hover {
+      background: rgba(245, 158, 11, 0.12);
+    }
+
+    /* Phase Baseline Banner */
+    .baseline-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(17, 25, 44, 0.72);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-size: 0.8rem;
+    }
+
+    .baseline-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent-cyan);
+      font-weight: 600;
+    }
+
+    .baseline-ranges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+    }
+
+    .baseline-ranges span strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* Crew Cards Grid */
+    .crew-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .crew-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 15px;
+      cursor: pointer;
+      transition: transform 0.16s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .crew-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--status-color, var(--green));
+      opacity: 0.9;
+    }
+
+    .crew-card:hover {
+      transform: translateY(-2px);
+      background: var(--bg-card-hover);
+    }
+
+    .crew-card.selected {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25), 0 10px 25px -10px rgba(56, 189, 248, 0.25);
+    }
+
+    .crew-card.status-green { --status-color: var(--green); }
+    .crew-card.status-yellow { --status-color: var(--yellow); }
+    .crew-card.status-red {
+      --status-color: var(--red);
+      border-color: rgba(239, 68, 68, 0.38);
+    }
+
+    .crew-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .crew-identity {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .crew-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: #050811;
+      flex-shrink: 0;
+    }
+
+    .crew-name {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .crew-role {
+      font-size: 0.74rem;
+      color: var(--text-secondary);
+    }
+
+    .risk-badge {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-end;
+      padding: 4px 9px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      border: 1px solid transparent;
+    }
+
+    .risk-badge.green {
+      background: var(--green-bg);
+      color: var(--green);
+      border-color: var(--green-border);
+    }
+
+    .risk-badge.yellow {
+      background: var(--yellow-bg);
+      color: var(--yellow);
+      border-color: var(--yellow-border);
+    }
+
+    .risk-badge.red {
+      background: var(--red-bg);
+      color: var(--red);
+      border-color: var(--red-border);
+    }
+
+    .risk-score-num {
+      font-size: 0.95rem;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .risk-label {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .vitals-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .vital-pill {
+      background: rgba(5, 8, 17, 0.55);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 6px 9px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .vital-pill.full-width {
+      grid-column: span 2;
+    }
+
+    .vital-pill.flag-yellow {
+      border-color: var(--yellow-border);
+      background: rgba(245, 158, 11, 0.08);
+    }
+
+    .vital-pill.flag-red {
+      border-color: var(--red-border);
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .vp-label {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .vp-val {
+      font-family: var(--font-mono);
+      font-size: 0.84rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-primary);
+    }
+
+    .vital-pill.flag-yellow .vp-val { color: #fbbf24; }
+    .vital-pill.flag-red .vp-val { color: #f87171; }
+
+    /* Main Workspace: Charts + Insights */
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    .panel-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .panel-title {
+      font-size: 1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel-subtitle {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+
+    .chart-mode-toggle {
+      display: inline-flex;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 3px;
+      border-radius: 8px;
+      gap: 3px;
+    }
+
+    .mode-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .mode-btn.active {
+      background: rgba(56, 189, 248, 0.16);
+      color: var(--accent-cyan);
+    }
+
+    .charts-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-bottom: 14px;
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .chart-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .chart-card.wide {
+      grid-column: span 2;
+    }
+
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .chart-title {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .chart-current {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent-cyan);
+    }
+
+    .chart-canvas-wrap {
+      position: relative;
+      width: 100%;
+      height: 140px;
+    }
+
+    canvas.vital-chart {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Insights Panel */
+    .insights-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: sticky;
+      top: 18px;
+    }
+
+    .insights-summary-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .count-chip {
+      font-size: 0.74rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+    }
+
+    .count-chip.red { color: #f87171; border-color: var(--red-border); background: var(--red-bg); }
+    .count-chip.yellow { color: #fbbf24; border-color: var(--yellow-border); background: var(--yellow-bg); }
+    .count-chip.green { color: #34d399; border-color: var(--green-border); background: var(--green-bg); }
+
+    .insights-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 680px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .insight-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid var(--green);
+      border-radius: 11px;
+      padding: 13px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+      transition: background 0.16s ease;
+    }
+
+    .insight-card:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .insight-card.yellow {
+      border-left-color: var(--yellow);
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.08), var(--bg-card) 45%);
+    }
+
+    .insight-card.red {
+      border-left-color: var(--red);
+      background: linear-gradient(90deg, rgba(239, 68, 68, 0.1), var(--bg-card) 45%);
+    }
+
+    .insight-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .insight-crew-name {
+      font-weight: 700;
+      font-size: 0.92rem;
+    }
+
+    .insight-tag {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .insight-tag.red { background: var(--red-bg); color: #f87171; border: 1px solid var(--red-border); }
+    .insight-tag.yellow { background: var(--yellow-bg); color: #fbbf24; border: 1px solid var(--yellow-border); }
+    .insight-tag.green { background: var(--green-bg); color: #34d399; border: 1px solid var(--green-border); }
+
+    .insight-why {
+      font-size: 0.83rem;
+      color: var(--text-primary);
+    }
+
+    .insight-action-box {
+      background: rgba(5, 8, 17, 0.55);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 9px 11px;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .insight-action-box strong {
+      color: var(--accent-cyan);
+      display: block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+
+    .insight-action-box ul {
+      padding-left: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 14px 10px 4px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: 4px;
+    }
+
+    /* Responsive Breakpoints */
+    @media (max-width: 1180px) {
+      .crew-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+      .insights-panel {
+        position: static;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .app-shell {
+        padding: 12px;
+      }
+      .crew-grid {
+        grid-template-columns: 1fr;
+      }
+      .charts-grid {
+        grid-template-columns: 1fr;
+      }
+      .chart-card.wide {
+        grid-column: span 1;
+      }
+      .phase-selector-wrap {
+        width: 100%;
+        justify-content: space-between;
+        overflow-x: auto;
+      }
+      .phase-label {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header & Controls -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" stroke-opacity="0.35" />
+            <path d="M3 12h4l2.2-4.5 3.6 9 2.2-4.5H21" />
+          </svg>
+        </div>
+        <div>
+          <h1>
+            AstroVitals
+            <span id="liveBadge" class="live-pill">
+              <span class="live-dot"></span>
+              <span id="liveText">Live Telemetry</span>
+            </span>
+          </h1>
+          <div class="brand-sub">Orbital Crew Biometric Monitor &bull; MET <span id="metClock">04:12:38:15</span></div>
+        </div>
+      </div>
+
+      <div class="controls-group">
+        <div class="phase-selector-wrap" role="group" aria-label="Mission Phase Selector">
+          <span class="phase-label">Mission Phase</span>
+          <button class="phase-btn" data-phase="launch">Launch</button>
+          <button class="phase-btn active" data-phase="orbit">Orbit</button>
+          <button class="phase-btn" data-phase="eva">EVA</button>
+          <button class="phase-btn" data-phase="return">Return</button>
+        </div>
+
+        <div class="sim-actions">
+          <button id="toggleSimBtn" class="btn-control" type="button">Pause</button>
+          <button id="triggerEventBtn" class="btn-control warn" type="button" title="Inject a realistic crew health anomaly to test alerts">Simulate Anomaly</button>
+          <button id="resetCrewBtn" class="btn-control" type="button">Normalize</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Active Mission Phase Baselines -->
+    <section class="baseline-banner" aria-label="Active Mission Phase Thresholds">
+      <div class="baseline-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span id="phaseBannerTitle">Phase: Orbit — Nominal Baseline Ranges</span>
+      </div>
+      <div class="baseline-ranges" id="phaseRangesText"></div>
+    </section>
+
+    <!-- Crew of 4 Cards -->
+    <section class="crew-grid" id="crewGrid" aria-label="Crew Status Cards"></section>
+
+    <!-- Main Dashboard: Live Charts + Plain-Language Insights -->
+    <main class="workspace">
+      <!-- Live Charts Panel -->
+      <section class="panel" aria-label="Live Telemetry Charts">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">
+              Real-Time Biometric Telemetry
+            </div>
+            <div class="panel-subtitle" id="chartScopeSubtitle">Viewing focused telemetry for Cmdr. Elena Vance (click any crew card to switch)</div>
+          </div>
+          <div class="chart-mode-toggle" role="group" aria-label="Chart Display Mode">
+            <button class="mode-btn active" data-chart-mode="focused">Focused Crew</button>
+            <button class="mode-btn" data-chart-mode="all">All 4 Crew</button>
+          </div>
+        </div>
+
+        <div class="charts-legend" id="chartsLegend"></div>
+
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-head">
+              <span class="chart-title">Heart Rate (bpm)</span>
+              <span class="chart-current" id="val-hr">--</span>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chart-hr" class="vital-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-head">
+              <span class="chart-title">Blood Oxygen SpO&#8322; (%)</span>
+              <span class="chart-current" id="val-spo2">--</span>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chart-spo2" class="vital-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-head">
+              <span class="chart-title">Core Body Temp (&deg;C)</span>
+              <span class="chart-current" id="val-temp">--</span>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chart-temp" class="vital-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-head">
+              <span class="chart-title">Sleep Duration (hrs / 24h)</span>
+              <span class="chart-current" id="val-sleep">--</span>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chart-sleep" class="vital-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card wide">
+            <div class="chart-head">
+              <span class="chart-title">Radiation Exposure Rate (mSv / day)</span>
+              <span class="chart-current" id="val-rad">--</span>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chart-rad" class="vital-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Insights Panel -->
+      <aside class="panel insights-panel" aria-label="Flight Surgeon Insights">
+        <div class="panel-header" style="margin-bottom: 4px;">
+          <div>
+            <div class="panel-title">Crew Health Insights</div>
+            <div class="panel-subtitle">Plain-language triage &amp; recommended actions</div>
+          </div>
+        </div>
+
+        <div class="insights-summary-bar" id="insightsSummary"></div>
+        <div class="insights-list" id="insightsList"></div>
+      </aside>
+    </main>
+
+    <footer>
+      Vitals are simulated. Built with AI assistance (Google AI Studio / Gemini).
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // Mission phase definitions: expected nominal ranges & warning/critical thresholds
+      const MISSION_PHASES = {
+        launch: {
+          label: "Launch (Ascent G-Load)",
+          description: "Elevated heart rate expected under high-G ascent; strict SpO2 and thermal monitoring.",
+          baselines: {
+            hr:    { min: 85,   max: 135,  warnLow: 70,   warnHigh: 150,  critLow: 55,   critHigh: 168,  unit: "bpm",     chartMin: 45,  chartMax: 185 },
+            spo2:  { min: 95,   max: 100,  warnLow: 93,   warnHigh: 100,  critLow: 90,   critHigh: 100,  unit: "%",       chartMin: 86,  chartMax: 101 },
+            temp:  { min: 36.4, max: 37.6, warnLow: 36.0, warnHigh: 38.0, critLow: 35.5, critHigh: 38.6, unit: "°C",      chartMin: 35.0, chartMax: 39.5 },
+            sleep: { min: 6.5,  max: 9.0,  warnLow: 5.5,  warnHigh: 10.5, critLow: 4.5,  critHigh: 12.0, unit: "hrs",     chartMin: 3.0, chartMax: 10.0 },
+            rad:   { min: 0.2,  max: 0.8,  warnLow: 0,    warnHigh: 1.5,  critLow: 0,    critHigh: 3.0,  unit: "mSv/d",   chartMin: 0,   chartMax: 4.5 }
+          }
+        },
+        orbit: {
+          label: "Orbit (Microgravity Cruise)",
+          description: "Resting cardiovascular baseline; watch for circadian sleep drift and ambient radiation.",
+          baselines: {
+            hr:    { min: 55,   max: 88,   warnLow: 48,   warnHigh: 105,  critLow: 40,   critHigh: 125,  unit: "bpm",     chartMin: 35,  chartMax: 155 },
+            spo2:  { min: 95,   max: 100,  warnLow: 93,   warnHigh: 100,  critLow: 90,   critHigh: 100,  unit: "%",       chartMin: 86,  chartMax: 101 },
+            temp:  { min: 36.2, max: 37.3, warnLow: 35.9, warnHigh: 37.8, critLow: 35.4, critHigh: 38.4, unit: "°C",      chartMin: 35.0, chartMax: 39.2 },
+            sleep: { min: 6.5,  max: 8.5,  warnLow: 5.5,  warnHigh: 10.0, critLow: 4.5,  critHigh: 11.5, unit: "hrs",     chartMin: 3.0, chartMax: 10.0 },
+            rad:   { min: 0.4,  max: 1.2,  warnLow: 0,    warnHigh: 2.0,  critLow: 0,    critHigh: 3.5,  unit: "mSv/d",   chartMin: 0,   chartMax: 5.0 }
+          }
+        },
+        eva: {
+          label: "EVA (Extravehicular Activity)",
+          description: "High metabolic workload in pressurized suit; higher thermal, HR, and cosmic radiation limits.",
+          baselines: {
+            hr:    { min: 90,   max: 145,  warnLow: 75,   warnHigh: 160,  critLow: 60,   critHigh: 175,  unit: "bpm",     chartMin: 50,  chartMax: 190 },
+            spo2:  { min: 94,   max: 100,  warnLow: 92,   warnHigh: 100,  critLow: 89,   critHigh: 100,  unit: "%",       chartMin: 85,  chartMax: 101 },
+            temp:  { min: 36.6, max: 37.9, warnLow: 36.1, warnHigh: 38.3, critLow: 35.6, critHigh: 38.8, unit: "°C",      chartMin: 35.0, chartMax: 39.5 },
+            sleep: { min: 6.5,  max: 9.0,  warnLow: 5.5,  warnHigh: 10.5, critLow: 4.5,  critHigh: 12.0, unit: "hrs",     chartMin: 3.0, chartMax: 10.0 },
+            rad:   { min: 0.8,  max: 2.2,  warnLow: 0,    warnHigh: 3.2,  critLow: 0,    critHigh: 4.8,  unit: "mSv/d",   chartMin: 0,   chartMax: 6.0 }
+          }
+        },
+        return: {
+          label: "Return (De-orbit & Re-entry)",
+          description: "Orthostatic stress and thermal cabin load during atmospheric re-entry.",
+          baselines: {
+            hr:    { min: 80,   max: 130,  warnLow: 65,   warnHigh: 148,  critLow: 52,   critHigh: 165,  unit: "bpm",     chartMin: 45,  chartMax: 185 },
+            spo2:  { min: 95,   max: 100,  warnLow: 93,   warnHigh: 100,  critLow: 90,   critHigh: 100,  unit: "%",       chartMin: 86,  chartMax: 101 },
+            temp:  { min: 36.4, max: 37.7, warnLow: 36.0, warnHigh: 38.1, critLow: 35.5, critHigh: 38.6, unit: "°C",      chartMin: 35.0, chartMax: 39.5 },
+            sleep: { min: 6.0,  max: 9.0,  warnLow: 5.0,  warnHigh: 10.5, critLow: 4.0,  critHigh: 12.0, unit: "hrs",     chartMin: 3.0, chartMax: 10.0 },
+            rad:   { min: 0.2,  max: 0.9,  warnLow: 0,    warnHigh: 1.6,  critLow: 0,    critHigh: 3.0,  unit: "mSv/d",   chartMin: 0,   chartMax: 4.5 }
+          }
+        }
+      };
+
+      const HISTORY_LEN = 36;
+
+      // Crew of 4
+      const crew = [
+        {
+          id: "c1",
+          name: "Cmdr. Elena Vance",
+          initials: "EV",
+          role: "Mission Commander",
+          color: "#38bdf8",
+          vitals: { hr: 72, spo2: 98.4, temp: 36.8, sleep: 7.4, rad: 0.75 },
+          drift:  { hr: 0,  spo2: 0,    temp: 0,    sleep: 0,   rad: 0 },
+          history: { hr: [], spo2: [], temp: [], sleep: [], rad: [] }
+        },
+        {
+          id: "c2",
+          name: "Dr. Marcus Chen",
+          initials: "MC",
+          role: "Flight Medical Officer",
+          color: "#a78bfa",
+          vitals: { hr: 68, spo2: 98.1, temp: 36.7, sleep: 7.1, rad: 0.82 },
+          drift:  { hr: 0,  spo2: 0,    temp: 0,    sleep: 0,   rad: 0 },
+          history: { hr: [], spo2: [], temp: [], sleep: [], rad: [] }
+        },
+        {
+          id: "c3",
+          name: "Lt. Aria Patel",
+          initials: "AP",
+          role: "Systems Engineer",
+          color: "#34d399",
+          vitals: { hr: 76, spo2: 97.6, temp: 36.9, sleep: 5.3, rad: 0.88 },
+          drift:  { hr: 4,  spo2: -0.3, temp: 0.1,  sleep: -1.4, rad: 0.1 },
+          history: { hr: [], spo2: [], temp: [], sleep: [], rad: [] }
+        },
+        {
+          id: "c4",
+          name: "Spec. Mateo Silva",
+          initials: "MS",
+          role: "EVA Specialist",
+          color: "#fb7185",
+          vitals: { hr: 82, spo2: 97.9, temp: 37.1, sleep: 6.9, rad: 1.05 },
+          drift:  { hr: 0,  spo2: 0,    temp: 0,    sleep: 0,   rad: 0 },
+          history: { hr: [], spo2: [], temp: [], sleep: [], rad: [] }
+        }
+      ];
+
+      let currentPhase = "orbit";
+      let selectedCrewId = "c1";
+      let chartMode = "focused"; // "focused" | "all"
+      let isRunning = true;
+      let anomalyCycle = 0;
+      let metSeconds = (4 * 86400) + (12 * 3600) + (38 * 60) + 15;
+
+      // Seed initial history so charts look populated on first render
+      function seedHistory() {
+        const b = MISSION_PHASES[currentPhase].baselines;
+        crew.forEach((member) => {
+          ["hr", "spo2", "temp", "sleep", "rad"].forEach((key) => {
+            member.history[key] = [];
+            const mid = (b[key].min + b[key].max) / 2 + (member.drift[key] || 0);
+            for (let i = 0; i < HISTORY_LEN; i++) {
+              const jitter = (Math.random() - 0.5) * (b[key].max - b[key].min) * 0.18;
+              const val = clampVital(key, mid + jitter);
+              member.history[key].push(val);
+            }
+            member.vitals[key] = member.history[key][HISTORY_LEN - 1];
+          });
+        });
+      }
+
+      function clampVital(key, val) {
+        if (key === "spo2") return Math.min(100, Math.max(82, Number(val.toFixed(1))));
+        if (key === "temp") return Math.min(40.5, Math.max(34.5, Number(val.toFixed(2))));
+        if (key === "sleep") return Math.min(11, Math.max(2.0, Number(val.toFixed(1))));
+        if (key === "rad") return Math.min(6.5, Math.max(0.05, Number(val.toFixed(2))));
+        return Math.min(195, Math.max(35, Math.round(val)));
+      }
+
+      // Compute individual vital severity + overall astronaut risk score (0-100)
+      function evaluateMember(member) {
+        const b = MISSION_PHASES[currentPhase].baselines;
+        const flags = [];
+        const vitalStatus = {};
+        let totalPoints = 0;
+
+        const checks = [
+          {
+            key: "hr",
+            name: "Heart Rate",
+            weight: 30,
+            lowMsg: "Heart rate is below expected range (bradycardia risk)",
+            highMsg: "Heart rate is elevated above phase baseline (cardiovascular strain)",
+            lowAction: "Verify ECG lead contact, assess for fatigue or vagal response, and rest in crew quarters.",
+            highAction: "Reduce physical exertion, hydrate with electrolytes, and perform paced breathing recovery."
+          },
+          {
+            key: "spo2",
+            name: "Blood Oxygen (SpO2)",
+            weight: 38,
+            lowMsg: "Blood oxygen saturation is dropping below safe threshold (hypoxia risk)",
+            highMsg: "SpO2 reading anomaly",
+            lowAction: "Check cabin/suit partial O2 pressure and CO2 scrubbers immediately; switch to backup O2 if < 91%.",
+            highAction: "Recalibrate pulse oximeter sensor."
+          },
+          {
+            key: "temp",
+            name: "Core Body Temp",
+            weight: 28,
+            lowMsg: "Core temperature is trending low (mild hypothermia / suit cooling over-compensation)",
+            highMsg: "Core body temperature is elevated (heat stress or early infection)",
+            lowAction: "Adjust thermal loop warming setting and add insulating layer.",
+            highAction: "Increase suit/cabin liquid cooling loop flow, hydrate, and screen for febrile symptoms."
+          },
+          {
+            key: "sleep",
+            name: "Sleep Duration",
+            weight: 20,
+            lowMsg: "Insufficient sleep over the last 24h (fatigue & cognitive error risk)",
+            highMsg: "Excessive sleep duration (possible fatigue/illness recovery)",
+            lowAction: "Defer high-precision tasks, schedule a protected 90-min rest block, and dim cabin lighting.",
+            highAction: "Conduct brief medical check-in to rule out lethargy or cabin CO2 buildup."
+          },
+          {
+            key: "rad",
+            name: "Radiation Exposure",
+            weight: 30,
+            lowMsg: "Radiation reading below sensor floor",
+            highMsg: "Elevated ionizing radiation rate detected",
+            lowAction: "Verify dosimeter telemetry calibration.",
+            highAction: "Relocate crew member to shielded storm shelter module and monitor solar particle flux."
+          }
+        ];
+
+        checks.forEach((cfg) => {
+          const val = member.vitals[cfg.key];
+          const lim = b[cfg.key];
+          let status = "green";
+          let points = 0;
+          let direction = null;
+
+          if (val <= lim.critLow || val >= lim.critHigh) {
+            status = "red";
+            points = cfg.weight;
+            direction = val <= lim.critLow ? "low" : "high";
+          } else if (val < lim.warnLow || val > lim.warnHigh) {
+            status = "red";
+            points = Math.round(cfg.weight * 0.85);
+            direction = val < lim.warnLow ? "low" : "high";
+          } else if (val < lim.min || val > lim.max) {
+            status = "yellow";
+            points = Math.round(cfg.weight * 0.5);
+            direction = val < lim.min ? "low" : "high";
+          }
+
+          vitalStatus[cfg.key] = status;
+          totalPoints += points;
+
+          if (status !== "green") {
+            flags.push({
+              key: cfg.key,
+              name: cfg.name,
+              severity: status,
+              value: val,
+              unit: lim.unit,
+              expected: `${lim.min}–${lim.max} ${lim.unit}`,
+              why: direction === "low" ? cfg.lowMsg : cfg.highMsg,
+              action: direction === "low" ? cfg.lowAction : cfg.highAction
+            });
+          }
+        });
+
+        // Risk score 0 - 100
+        const riskScore = Math.min(100, Math.max(4, totalPoints + (flags.length === 0 ? Math.round(Math.random() * 6 + 5) : 0)));
+        let overall = "green";
+        if (riskScore >= 65 || flags.some((f) => f.severity === "red")) {
+          overall = "red";
+        } else if (riskScore >= 30 || flags.length > 0) {
+          overall = "yellow";
+        }
+
+        return { riskScore, overall, vitalStatus, flags };
+      }
+
+      // Simulation tick: smooth mean-reverting random walk toward phase baseline + active drift
+      function stepSimulation() {
+        const b = MISSION_PHASES[currentPhase].baselines;
+        crew.forEach((member) => {
+          ["hr", "spo2", "temp", "sleep", "rad"].forEach((key) => {
+            const lim = b[key];
+            const target = (lim.min + lim.max) / 2 + (member.drift[key] || 0);
+            const current = member.vitals[key];
+            const span = lim.max - lim.min;
+
+            // Mean reversion + realistic telemetry jitter
+            const pull = (target - current) * 0.22;
+            const noiseScale = key === "sleep" ? 0.03 : key === "spo2" ? 0.14 : key === "temp" ? 0.06 : key === "rad" ? 0.08 : span * 0.09;
+            const noise = (Math.random() - 0.5) * 2 * noiseScale;
+
+            const nextVal = clampVital(key, current + pull + noise);
+            member.vitals[key] = nextVal;
+            member.history[key].push(nextVal);
+            if (member.history[key].length > HISTORY_LEN) {
+              member.history[key].shift();
+            }
+          });
+        });
+      }
+
+      // Inject realistic anomalies for testing alerts & insights
+      function triggerAnomaly() {
+        anomalyCycle = (anomalyCycle + 1) % 3;
+        // Clear severe drifts first on non-targeted or cycle cleanly
+        if (anomalyCycle === 1) {
+          // EVA Specialist: Thermal + HR + Radiation spike
+          crew[3].drift = { hr: 48, spo2: -1.8, temp: 1.15, sleep: -0.3, rad: 2.35 };
+          selectedCrewId = "c4";
+        } else if (anomalyCycle === 2) {
+          // Medical Officer: Cabin O2 / SpO2 drop + HR compensation
+          crew[1].drift = { hr: 34, spo2: -6.8, temp: 0.2, sleep: -0.5, rad: 0 };
+          selectedCrewId = "c2";
+        } else {
+          // Commander: Acute sleep deprivation & mild thermal elevation
+          crew[0].drift = { hr: 24, spo2: -0.6, temp: 0.75, sleep: -2.9, rad: 0.9 };
+          selectedCrewId = "c1";
+        }
+        stepSimulation();
+        renderAll();
+      }
+
+      function normalizeCrew() {
+        crew.forEach((m) => {
+          m.drift = { hr: 0, spo2: 0, temp: 0, sleep: 0, rad: 0 };
+        });
+        stepSimulation();
+        renderAll();
+      }
+
+      // Render Phase Baseline Banner
+      function renderPhaseBanner() {
+        const phase = MISSION_PHASES[currentPhase];
+        const b = phase.baselines;
+        document.getElementById("phaseBannerTitle").textContent = `Phase: ${phase.label}`;
+        document.getElementById("phaseRangesText").innerHTML = `
+          <span>HR: <strong>${b.hr.min}–${b.hr.max} bpm</strong></span>
+          <span>SpO&#8322;: <strong>${b.spo2.min}–${b.spo2.max}%</strong></span>
+          <span>Temp: <strong>${b.temp.min}–${b.temp.max}&deg;C</strong></span>
+          <span>Sleep: <strong>${b.sleep.min}–${b.sleep.max} hrs</strong></span>
+          <span>Rad: <strong>${b.rad.min}–${b.rad.max} mSv/d</strong></span>
+        `;
+      }
+
+      // Render Crew Cards
+      function renderCrewCards(evaluations) {
+        const grid = document.getElementById("crewGrid");
+        grid.innerHTML = "";
+
+        crew.forEach((member, idx) => {
+          const ev = evaluations[idx];
+          const card = document.createElement("article");
+          card.className = `crew-card status-${ev.overall} ${member.id === selectedCrewId ? "selected" : ""}`;
+          card.setAttribute("tabindex", "0");
+          card.setAttribute("role", "button");
+          card.setAttribute("aria-label", `Select ${member.name}, risk ${ev.overall}`);
+
+          const statusText = ev.overall === "green" ? "Nominal" : ev.overall === "yellow" ? "Caution" : "Critical";
+
+          card.innerHTML = `
+            <div class="crew-header">
+              <div class="crew-identity">
+                <div class="crew-avatar" style="background:${member.color}">${member.initials}</div>
+                <div>
+                  <div class="crew-name">${member.name}</div>
+                  <div class="crew-role">${member.role}</div>
+                </div>
+              </div>
+              <div class="risk-badge ${ev.overall}">
+                <span class="risk-score-num">${ev.riskScore}</span>
+                <span class="risk-label">${statusText}</span>
+              </div>
+            </div>
+            <div class="vitals-mini-grid">
+              <div class="vital-pill flag-${ev.vitalStatus.hr}">
+                <span class="vp-label">HR</span>
+                <span class="vp-val">${member.vitals.hr} bpm</span>
+              </div>
+              <div class="vital-pill flag-${ev.vitalStatus.spo2}">
+                <span class="vp-label">SpO&#8322;</span>
+                <span class="vp-val">${member.vitals.spo2.toFixed(1)}%</span>
+              </div>
+              <div class="vital-pill flag-${ev.vitalStatus.temp}">
+                <span class="vp-label">Temp</span>
+                <span class="vp-val">${member.vitals.temp.toFixed(1)}&deg;C</span>
+              </div>
+              <div class="vital-pill flag-${ev.vitalStatus.sleep}">
+                <span class="vp-label">Sleep</span>
+                <span class="vp-val">${member.vitals.sleep.toFixed(1)} hrs</span>
+              </div>
+              <div class="vital-pill full-width flag-${ev.vitalStatus.rad}">
+                <span class="vp-label">Radiation Rate</span>
+                <span class="vp-val">${member.vitals.rad.toFixed(2)} mSv/day</span>
+              </div>
+            </div>
+          `;
+
+          card.addEventListener("click", () => {
+            selectedCrewId = member.id;
+            chartMode = "focused";
+            updateModeButtons();
+            renderAll();
+          });
+
+          card.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              selectedCrewId = member.id;
+              renderAll();
+            }
+          });
+
+          grid.appendChild(card);
+        });
+      }
+
+      // Render Insights Panel (Plain Language)
+      function renderInsights(evaluations) {
+        const list = document.getElementById("insightsList");
+        const summary = document.getElementById("insightsSummary");
+
+        const counts = { red: 0, yellow: 0, green: 0 };
+        const items = crew.map((member, i) => ({ member, eval: evaluations[i] }));
+        items.forEach((item) => counts[item.eval.overall]++);
+
+        summary.innerHTML = `
+          <span class="count-chip red">${counts.red} Critical</span>
+          <span class="count-chip yellow">${counts.yellow} Caution</span>
+          <span class="count-chip green">${counts.green} Nominal</span>
+        `;
+
+        // Sort: Red first, then Yellow, then Green
+        const priority = { red: 0, yellow: 1, green: 2 };
+        items.sort((a, b) => priority[a.eval.overall] - priority[b.eval.overall] || b.eval.riskScore - a.eval.riskScore);
+
+        list.innerHTML = "";
+        items.forEach(({ member, eval: ev }) => {
+          const card = document.createElement("div");
+          card.className = `insight-card ${ev.overall}`;
+
+          const tagLabel = ev.overall === "red" ? "Critical Alert" : ev.overall === "yellow" ? "Caution Flag" : "All Clear";
+
+          let whyHtml = "";
+          let actionHtml = "";
+
+          if (ev.flags.length === 0) {
+            whyHtml = `<div class="insight-why">All five vitals are comfortably inside expected <strong>${MISSION_PHASES[currentPhase].label}</strong> ranges.</div>`;
+            actionHtml = `
+              <div class="insight-action-box">
+                <strong>Recommended Action</strong>
+                <ul>
+                  <li>Continue routine telemetry monitoring and standard hydration schedule.</li>
+                </ul>
+              </div>
+            `;
+          } else {
+            const summarySentence = ev.flags
+              .map((f) => `${f.name} is at <strong>${f.value} ${f.unit}</strong> (expected ${f.expected}) — ${f.why.toLowerCase()}.`)
+              .join(" ");
+
+            whyHtml = `<div class="insight-why">${summarySentence}</div>`;
+            const actionBullets = ev.flags.map((f) => `<li>${f.action}</li>`).join("");
+            actionHtml = `
+              <div class="insight-action-box">
+                <strong>What To Do Next</strong>
+                <ul>${actionBullets}</ul>
+              </div>
+            `;
+          }
+
+          card.innerHTML = `
+            <div class="insight-top">
+              <span class="insight-crew-name">${member.name} <span style="color:var(--text-muted); font-weight:500; font-size:0.78rem;">(Risk ${ev.riskScore})</span></span>
+              <span class="insight-tag ${ev.overall}">${tagLabel}</span>
+            </div>
+            ${whyHtml}
+            ${actionHtml}
+          `;
+
+          card.addEventListener("click", () => {
+            selectedCrewId = member.id;
+            chartMode = "focused";
+            updateModeButtons();
+            renderAll();
+          });
+
+          list.appendChild(card);
+        });
+      }
+
+      // Draw crisp HiDPI Canvas Live Line Charts
+      function drawVitalChart(canvasId, vitalKey, formatFn) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const rect = canvas.parentElement.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.max(200, Math.floor(rect.width));
+        const height = Math.max(100, Math.floor(rect.height));
+
+        if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+          canvas.width = width * dpr;
+          canvas.height = height * dpr;
+        }
+
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        const lim = MISSION_PHASES[currentPhase].baselines[vitalKey];
+        const pad = { top: 10, right: 10, bottom: 18, left: 38 };
+        const plotW = width - pad.left - pad.right;
+        const plotH = height - pad.top - pad.bottom;
+
+        const yMin = lim.chartMin;
+        const yMax = lim.chartMax;
+        const yToPx = (v) => pad.top + plotH - ((Math.min(yMax, Math.max(yMin, v)) - yMin) / (yMax - yMin)) * plotH;
+
+        // Draw nominal baseline shaded band
+        const bandTop = yToPx(lim.max);
+        const bandBot = yToPx(lim.min);
+        ctx.fillStyle = "rgba(16, 185, 129, 0.08)";
+        ctx.fillRect(pad.left, bandTop, plotW, Math.max(2, bandBot - bandTop));
+
+        // Baseline upper & lower dashed lines
+        ctx.save();
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.35)";
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        [lim.min, lim.max].forEach((bVal) => {
+          const y = yToPx(bVal);
+          ctx.beginPath();
+          ctx.moveTo(pad.left, y);
+          ctx.lineTo(pad.left + plotW, y);
+          ctx.stroke();
+        });
+        ctx.restore();
+
+        // Horizontal gridlines & Y-axis labels
+        ctx.fillStyle = "#64748b";
+        ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+
+        const ticks = 4;
+        for (let i = 0; i <= ticks; i++) {
+          const val = yMin + ((yMax - yMin) * i) / ticks;
+          const y = yToPx(val);
+          ctx.strokeStyle = "rgba(148, 163, 184, 0.09)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(pad.left, y);
+          ctx.lineTo(pad.left + plotW, y);
+          ctx.stroke();
+
+          const labelText = vitalKey === "hr" ? Math.round(val) : val.toFixed(1);
+          ctx.fillText(labelText, pad.left - 6, y);
+        }
+
+        // X-axis time hints
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText("-60s", pad.left, height - 13);
+        ctx.textAlign = "right";
+        ctx.fillText("Now", pad.left + plotW, height - 13);
+
+        // Series to plot
+        const seriesList = chartMode === "all"
+          ? crew
+          : [crew.find((m) => m.id === selectedCrewId) || crew[0]];
+
+        seriesList.forEach((member) => {
+          const data = member.history[vitalKey];
+          if (!data || data.length < 2) return;
+
+          ctx.save();
+          ctx.strokeStyle = member.color;
+          ctx.lineWidth = chartMode === "focused" ? 2.4 : 1.8;
+          ctx.lineJoin = "round";
+          ctx.lineCap = "round";
+
+          ctx.beginPath();
+          data.forEach((val, idx) => {
+            const x = pad.left + (idx / (HISTORY_LEN - 1)) * plotW;
+            const y = yToPx(val);
+            if (idx === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+
+          // Soft area fill in focused mode
+          if (chartMode === "focused") {
+            ctx.lineTo(pad.left + plotW, pad.top + plotH);
+            ctx.lineTo(pad.left, pad.top + plotH);
+            ctx.closePath();
+            const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+            grad.addColorStop(0, member.color + "33");
+            grad.addColorStop(1, member.color + "00");
+            ctx.fillStyle = grad;
+            ctx.fill();
+          }
+
+          // Live endpoint dot
+          const lastVal = data[data.length - 1];
+          const lastX = pad.left + plotW;
+          const lastY = yToPx(lastVal);
+          ctx.fillStyle = member.color;
+          ctx.beginPath();
+          ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // Update current readout header
+        const focusedMember = crew.find((m) => m.id === selectedCrewId) || crew[0];
+        const valEl = document.getElementById(`val-${vitalKey}`);
+        if (valEl) {
+          if (chartMode === "focused") {
+            valEl.textContent = formatFn(focusedMember.vitals[vitalKey]);
+            valEl.style.color = focusedMember.color;
+          } else {
+            const avg = crew.reduce((s, m) => s + m.vitals[vitalKey], 0) / crew.length;
+            valEl.textContent = `Avg ${formatFn(avg)}`;
+            valEl.style.color = "var(--accent-cyan)";
+          }
+        }
+      }
+
+      function renderCharts() {
+        const focusedMember = crew.find((m) => m.id === selectedCrewId) || crew[0];
+        const subtitle = document.getElementById("chartScopeSubtitle");
+        const legend = document.getElementById("chartsLegend");
+
+        if (chartMode === "focused") {
+          subtitle.textContent = `Focused live telemetry for ${focusedMember.name} (green band = ${MISSION_PHASES[currentPhase].label} nominal range)`;
+          legend.innerHTML = `
+            <span class="legend-item"><span class="legend-swatch" style="background:${focusedMember.color}"></span> ${focusedMember.name}</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:rgba(16,185,129,0.35)"></span> Phase Nominal Band</span>
+          `;
+        } else {
+          subtitle.textContent = `Comparing all 4 crew members simultaneously against ${MISSION_PHASES[currentPhase].label} baselines`;
+          legend.innerHTML = crew.map((m) => `
+            <span class="legend-item"><span class="legend-swatch" style="background:${m.color}"></span> ${m.name}</span>
+          `).join("") + `<span class="legend-item"><span class="legend-swatch" style="background:rgba(16,185,129,0.35)"></span> Nominal Band</span>`;
+        }
+
+        drawVitalChart("chart-hr", "hr", (v) => `${Math.round(v)} bpm`);
+        drawVitalChart("chart-spo2", "spo2", (v) => `${v.toFixed(1)}%`);
+        drawVitalChart("chart-temp", "temp", (v) => `${v.toFixed(1)}°C`);
+        drawVitalChart("chart-sleep", "sleep", (v) => `${v.toFixed(1)} hrs`);
+        drawVitalChart("chart-rad", "rad", (v) => `${v.toFixed(2)} mSv/d`);
+      }
+
+      function formatMET(totalSec) {
+        const d = Math.floor(totalSec / 86400);
+        const h = Math.floor((totalSec % 86400) / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${pad(d)}:${pad(h)}:${pad(m)}:${pad(s)}`;
+      }
+
+      function updateModeButtons() {
+        document.querySelectorAll("[data-chart-mode]").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.chartMode === chartMode);
+        });
+      }
+
+      function renderAll() {
+        const evaluations = crew.map((m) => evaluateMember(m));
+        renderPhaseBanner();
+        renderCrewCards(evaluations);
+        renderInsights(evaluations);
+        renderCharts();
+      }
+
+      // Wire up Phase Selector
+      document.querySelectorAll(".phase-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          currentPhase = btn.dataset.phase;
+          document.querySelectorAll(".phase-btn").forEach((b) => b.classList.toggle("active", b === btn));
+          stepSimulation();
+          renderAll();
+        });
+      });
+
+      // Wire up Chart Mode Toggle
+      document.querySelectorAll("[data-chart-mode]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          chartMode = btn.dataset.chartMode;
+          updateModeButtons();
+          renderCharts();
+        });
+      });
+
+      // Wire up Simulation Controls
+      const toggleSimBtn = document.getElementById("toggleSimBtn");
+      const liveBadge = document.getElementById("liveBadge");
+      const liveText = document.getElementById("liveText");
+
+      toggleSimBtn.addEventListener("click", () => {
+        isRunning = !isRunning;
+        toggleSimBtn.textContent = isRunning ? "Pause" : "Resume";
+        liveBadge.classList.toggle("paused", !isRunning);
+        liveText.textContent = isRunning ? "Live Telemetry" : "Paused";
+      });
+
+      document.getElementById("triggerEventBtn").addEventListener("click", triggerAnomaly);
+      document.getElementById("resetCrewBtn").addEventListener("click", normalizeCrew);
+
+      // Resize observer for crisp charts
+      window.addEventListener("resize", renderCharts);
+
+      // Initialize & start real-time loops
+      seedHistory();
+      renderAll();
+
+      setInterval(() => {
+        if (!isRunning) return;
+        stepSimulation();
+        renderAll();
+      }, 1400);
+
+      setInterval(() => {
+        if (!isRunning) return;
+        metSeconds += 1;
+        document.getElementById("metClock").textContent = formatMET(metSeconds);
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>
